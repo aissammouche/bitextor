@@ -22,15 +22,21 @@ import base64
 import string
 import lzma
 from external_processor import ExternalTextProcessor
+from nltk.data import load
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/utils")
 from utils.common import open_xz_or_gzip_or_plain
 
 
 def extract_encoded_text(encoded, sent_tokeniser, word_tokeniser, morph_analyser):
-    proc_sent = ExternalTextProcessor(sent_tokeniser.split())
+    tokenized_segments = ""
     content = base64.b64decode(encoded).decode("utf-8").replace("\t", " ")
-    tokenized_segments = proc_sent.process(content).strip()
+    if isinstance(sent_tokeniser, str):
+        proc_sent = ExternalTextProcessor(sent_tokeniser.split())
+        tokenized_segments = proc_sent.process(content).strip()
+    else:
+        tokenized_segments = "\n".join(sent_tokeniser.tokenize(content))
+
     tokenized_filtered = ""
 
     for sent in tokenized_segments.split("\n"):
@@ -60,10 +66,20 @@ oparser.add_argument('--tokenized-output', default="plain_tokenized.xz", dest='t
 
 options = oparser.parse_args()
 
+sentence_splitter = None
+if options.splitter.split()[0] == "sent_tokenize()":
+    language = options.splitter.split()[1]
+    try:
+        sentence_splitter = load('tokenizers/punkt/{0}.pickle'.format(language))
+    except:
+        sentence_splitter = load('tokenizers/punkt/{0}.pickle'.format("english"))
+else:
+    sentence_splitter = options.splitter
+                                                                                            
 with open_xz_or_gzip_or_plain(options.text) as reader, lzma.open(options.sent_output, "w") as sent_writer, lzma.open(options.tok_output, "w") as tok_writer:
     for line in reader:
         encoded_text = line.strip()
-        sentences, tokenized = extract_encoded_text(encoded_text, options.splitter, options.tokenizer, options.lemmatizer)
+        sentences, tokenized = extract_encoded_text(encoded_text, sentence_splitter, options.tokenizer, options.lemmatizer)
         if sentences and tokenized:
             sent_writer.write(sentences + b"\n")
             tok_writer.write(tokenized + b"\n")
