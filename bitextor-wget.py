@@ -88,6 +88,7 @@ def run(url, outPath, timeLimit, agent, filetypes, warcfilename, wait):
                             # content length and content type will be filled before writing
                             record.http_headers = StatusAndHeaders(record.http_headers.get_statuscode(), [])
 
+                    record.length = None
                     writer.write_record(record)
             except:
                 pass
