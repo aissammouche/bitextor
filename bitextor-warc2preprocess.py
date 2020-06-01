@@ -46,20 +46,19 @@ from boilerpipe.extract import Extractor as ExtrB
 
 
 class SimpleParser(HTMLTokenizer):
-    startNL = ["ul", "ol", "dl", "tr"]
-    endNL = ["p", "div", "li", "dd", "dt", "th", "td", "h1", "h2", "h3", "h4", "h5", "h6"]
-    selfNL = ["br"]
+    startendNL = ["ul", "ol", "dl", "tr", "p", "div", "li", "dd", "dt", "th", "td", "h1", "h2", "h3", "h4", "h5", "h6", "article", "aside", "blockquote", "details", "summary", "figcaption", "footer", "form", "header", "legend", "main", "nav", "pre", "section"]
+    selfNL = ["br", "hr"]
     noText = ["script", "noscript", "style"]
     lastTok = ""
     parsed = ""
 
     def handle_starttag(self, tag, attrs):
-        if tag in self.startNL:
+        if tag in self.startendNL or tag in self.selfNL:
             self.parsed = self.parsed + "\n"
         self.lastTok = tag
 
     def handle_endtag(self, tag):
-        if tag in self.endNL:
+        if tag in self.startendNL:
             self.parsed = self.parsed + "\n"
 
     def handle_startendtag(self, tag, attrs):
@@ -307,10 +306,13 @@ for record in f:
     else:
         logging.info(url + ": Getting text with HTML tokenizer")
         parser = SimpleParser()
-        parser.feed(text)
-        plaintext = parser.get_text()
-
-    plaintext = re.sub(r"\n+", "\n", re.sub(r" *\n *", "\n", re.sub(r"^\s+$", "\n", re.sub(r" +", " ", re.sub(r"\r", "", plaintext.replace(u'\xa0', u' ')))))).strip()
+        try:
+            parser.feed(text)
+            plaintext = parser.get_text()
+        except:
+            logging.info("Tree structure issues in HTML/XML. Ignoring this document")
+            continue
+    plaintext = re.sub(r"\n+", "\n", re.sub(r" *\n *", "\n", re.sub(r"[ \t\v\f]+", " ", re.sub(r"\r", "", plaintext.replace(u'\xa0', u' '))))).strip()
     plaintext_hash = mmh3.hash(plaintext, signed=False)
 
     if plaintext_hash in seen_plain_text or plaintext_hash in previous_crawl_hashes:
