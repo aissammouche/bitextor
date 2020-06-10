@@ -90,7 +90,10 @@ def office2html(data):
     xmls = []
     for xml in office_file.namelist():
         if "word/document.xml" == xml or "ppt/slides/slide" == xml[0:16] or "xl/sharedStrings.xml" == xml:
-            xmls.append(office_file.read(xml))
+            try:
+                xmls.append(office_file.read(xml))
+            except Exception as ex:
+                continue
     return xmls
 
 
