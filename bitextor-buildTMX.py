@@ -34,14 +34,17 @@ import argparse
 import time
 import locale
 import re
-import lzma
+import os
 from xml.sax.saxutils import escape
 
+sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/utils")
+from utils.common import open_xz_or_gzip_or_plain, dummy_open
 
-def printseg(lang, columns, urls, seg, fields_dict, mint, deferred=None, checksum=None, no_delete_seg=False):
+
+def printseg(lang, seg_columns, urls, seg, fields_dict, mint, deferred=None, checksum=None, no_delete_seg=False):
     info_tag = []
     print("    <tuv xml:lang=\"" + lang + "\">")
-    if "url1" in columns:
+    if "url1" in seg_columns:
         for url in urls:
             print("     <prop type=\"source-document\">" + escape(url) + "</prop>")
     if deferred:
@@ -60,21 +63,21 @@ def printseg(lang, columns, urls, seg, fields_dict, mint, deferred=None, checksu
     print("    </tuv>")
 
 
-def printtu(idcounter, lang1, lang2, columns, urls1, urls2, fields_dict, mint, no_delete_seg):
-    print("   <tu tuid=\"" + str(idcounter) + "\" datatype=\"Text\">")
-    infoTag = []
+def printtu(tu_idcounter, lang1, lang2, tu_columns, tu_urls1, tu_urls2, fields_dict, mint, no_delete_seg):
+    print("   <tu tuid=\"" + str(tu_idcounter) + "\" datatype=\"Text\">")
+    info_tag = []
     if 'hunalign' in fields_dict and fields_dict['hunalign'] != "":
         print("    <prop type=\"score-aligner\">" + fields_dict['hunalign'] + "</prop>")
     if 'bicleaner' in fields_dict and fields_dict['bicleaner'] != "":
         print("    <prop type=\"score-bicleaner\">" + fields_dict['bicleaner'] + "</prop>")
     # Output info data ILSP-FC specification
     if re.sub("[^0-9]", "", fields_dict["seg1"]) != re.sub("[^0-9]", "", fields_dict["seg2"]):
-        infoTag.append("different numbers in TUVs")
+        info_tag.append("different numbers in TUVs")
     print("    <prop type=\"type\">1:1</prop>")
     if re.sub(r'\W+', '', fields_dict["seg1"]) == re.sub(r'\W+', '', fields_dict["seg2"]):
-        infoTag.append("equal TUVs")
-    if len(infoTag) > 0:
-        print("    <prop type=\"info\">" + "|".join(infoTag) + "</prop>")
+        info_tag.append("equal TUVs")
+    if len(info_tag) > 0:
+        print("    <prop type=\"info\">" + "|".join(info_tag) + "</prop>")
 
     if 'deferredseg1' not in fields_dict or fields_dict['deferredseg1'] == "":
         fields_dict['deferredseg1'] = None
@@ -85,12 +88,13 @@ def printtu(idcounter, lang1, lang2, columns, urls1, urls2, fields_dict, mint, n
     if 'checksum2' not in fields_dict:
         fields_dict['checksum2'] = None
 
-    printseg(lang1, columns, urls1, fields_dict['seg1'], fields_dict, mint, fields_dict['deferredseg1'],
+    printseg(lang1, tu_columns, tu_urls1, fields_dict['seg1'], fields_dict, mint, fields_dict['deferredseg1'],
              fields_dict['checksum1'], no_delete_seg)
-    printseg(lang2, columns, urls2, fields_dict['seg2'], fields_dict, mint, fields_dict['deferredseg2'],
+    printseg(lang2, tu_columns, tu_urls2, fields_dict['seg2'], fields_dict, mint, fields_dict['deferredseg2'],
              fields_dict['checksum2'], no_delete_seg)
 
     print("   </tu>")
+
 
 oparser = argparse.ArgumentParser(
     description="This script reads the output of bitextor-cleantextalign and formats the aligned segments as a TMX "
@@ -121,87 +125,89 @@ oparser.add_argument("--dedup", dest="dedup", help="Dedup entries and group urls
 
 options = oparser.parse_args()
 
-if options.clean_alignments is not None:
-    reader = open(options.clean_alignments, "r")
-else:
-    reader = sys.stdin
+with open_xz_or_gzip_or_plain(options.clean_alignments, 'rt') if options.clean_alignments else sys.stdin as reader,\
+        open_xz_or_gzip_or_plain(options.text_file_deduped, 'wt') if options.text_file_deduped and options.dedup else dummy_open() as text_writer:
 
-text_writer = None
-if options.text_file_deduped and options.dedup:
-    if options.text_file_deduped[-3:] == ".xz":
-        text_writer = lzma.open(options.text_file_deduped, "wt")
-    else:
-        text_writer = open(options.text_file_deduped, "w")
+    print("<?xml version=\"1.0\"?>")
+    print("<tmx version=\"1.4\">")
+    print(" <header")
+    print("   adminlang=\"" + locale.setlocale(locale.LC_ALL, '').split(".")[0].split("_")[0] + "\"")
+    print("   srclang=\"" + options.lang1 + "\"")
+    print("   o-tmf=\"PlainText\"")
+    print("   creationtool=\"bitextor\"")
+    print("   creationtoolversion=\"4.0\"")
+    print("   datatype=\"PlainText\"")
+    print("   segtype=\"sentence\"")
+    print("   creationdate=\"" + time.strftime("%Y%m%dT%H%M%S") + "\"")
+    print("   o-encoding=\"utf-8\">")
+    print(" </header>")
+    print(" <body>")
 
-print("<?xml version=\"1.0\"?>")
-print("<tmx version=\"1.4\">")
-print(" <header")
-print("   adminlang=\"" + locale.setlocale(locale.LC_ALL, '').split(".")[0].split("_")[0] + "\"")
-print("   srclang=\"" + options.lang1 + "\"")
-print("   o-tmf=\"PlainText\"")
-print("   creationtool=\"bitextor\"")
-print("   creationtoolversion=\"4.0\"")
-print("   datatype=\"PlainText\"")
-print("   segtype=\"sentence\"")
-print("   creationdate=\"" + time.strftime("%Y%m%dT%H%M%S") + "\"")
-print("   o-encoding=\"utf-8\">")
-print(" </header>")
-print(" <body>")
+    idcounter = 0
+    prev_hash = ""
+    prev_fieldsdict = dict()
+    urls1 = set()
+    urls2 = set()
+    bestseg1 = ""
+    bestseg2 = ""
+    columns = options.columns.split(',')
+    fieldsdict = dict()
 
-idcounter = 0 
-prev_hash = ""
-prev_fieldsdict = dict()
-urls1 = set()
-urls2 = set()
-columns = options.columns.split(',')
-fieldsdict = dict()
-    
-for line in reader:
-    fields = line.split("\t")
-    fields[-1] = fields[-1].strip()
-    line_hash = ""
-    for field, column in zip(fields, columns):
-        fieldsdict[column] = field
+    for line in reader:
+        fields = line.split("\t")
+        fields[-1] = fields[-1].strip()
+        line_hash = ""
+        for field, column in zip(fields, columns):
+            fieldsdict[column] = field
+
+        if options.dedup:
+            for part in options.dedup.split(','):
+                line_hash = line_hash + "\t" + fieldsdict[part]
+        if 'seg1' not in fieldsdict:
+            fieldsdict['seg1'] = ""
+        if 'seg2' not in fieldsdict:
+            fieldsdict['seg2'] = ""
+        if prev_hash == "" and options.dedup:
+            bestseg1 = fieldsdict['seg1']
+            bestseg2 = fieldsdict['seg2']
+            urls1.add(fieldsdict['url1'])
+            urls2.add(fieldsdict['url2'])
+            prev_hash = line_hash
+            prev_fieldsdict = dict(fieldsdict)
+        elif prev_hash == line_hash and options.dedup:
+            urls1.add(fieldsdict['url1'])
+            urls2.add(fieldsdict['url2'])
+            prev_hash = line_hash
+            prev_fieldsdict = dict(fieldsdict)
+        elif not options.dedup:
+            urls1.add(fieldsdict['url1'])
+            urls2.add(fieldsdict['url2'])
+            idcounter += 1
+            printtu(idcounter, options.lang1, options.lang2, columns, urls1, urls2, fieldsdict, options.mint,
+                    options.no_delete_seg)
+            urls1 = set()
+            urls2 = set()
+        else:
+            idcounter += 1
+            prev_fieldsdict['seg1'] = bestseg1
+            prev_fieldsdict['seg2'] = bestseg2
+            printtu(idcounter, options.lang1, options.lang2, columns, urls1, urls2, prev_fieldsdict, options.mint, options.no_delete_seg)
+            if text_writer:
+                text_writer.write("\t".join([x for x in prev_fieldsdict.values() if x])+"\n")
+            urls1 = set()
+            urls2 = set()
+            bestseg1 = fieldsdict['seg1']
+            bestseg2 = fieldsdict['seg2']
+            urls1.add(fieldsdict['url1'])
+            urls2.add(fieldsdict['url2'])
+            prev_hash = line_hash
+            prev_fieldsdict = dict(fieldsdict)
 
     if options.dedup:
-        for part in options.dedup.split(','):
-            line_hash = line_hash + "\t" + fieldsdict[part]
-    if 'seg1' not in fieldsdict:
-        fieldsdict['seg1'] = ""
-    if 'seg2' not in fieldsdict:
-        fieldsdict['seg2'] = ""
-
-    if (prev_hash == line_hash or prev_hash == "") and options.dedup:
-        urls1.add(fieldsdict['url1'])
-        urls2.add(fieldsdict['url2'])
-        prev_hash = line_hash
-        prev_fieldsdict = dict(fieldsdict)
-    elif not options.dedup:
-        urls1.add(fieldsdict['url1'])
-        urls2.add(fieldsdict['url2'])
         idcounter += 1
-        printtu(idcounter, options.lang1, options.lang2, columns, urls1, urls2, fieldsdict, options.mint,
-                options.no_delete_seg)
-        urls1 = set()
-        urls2 = set()
-    else:
-        idcounter += 1
-        printtu(idcounter, options.lang1, options.lang2, columns, urls1, urls2, prev_fieldsdict, options.mint, options.no_delete_seg)
+        if fieldsdict != {}:
+            printtu(idcounter, options.lang1, options.lang2, columns, urls1, urls2, fieldsdict, options.mint, options.no_delete_seg)
         if text_writer:
-            text_writer.write("\t".join([x for x in prev_fieldsdict.values() if x])+"\n")
-        urls1 = set()
-        urls2 = set()
-        urls1.add(fieldsdict['url1'])
-        urls2.add(fieldsdict['url2'])
-        prev_hash = line_hash
-        prev_fieldsdict = dict(fieldsdict)
-
-
-if options.dedup:
-    idcounter += 1
-    if fieldsdict != {}:
-        printtu(idcounter, options.lang1, options.lang2, columns, urls1, urls2, fieldsdict, options.mint, options.no_delete_seg)
-    text_writer.write("\t".join([x for x in fieldsdict.values() if x])+"\n")
-print(" </body>")
-print("</tmx>")
-reader.close()
+            text_writer.write("\t".join([x for x in fieldsdict.values() if x])+"\n")
+    print(" </body>")
+    print("</tmx>")
