@@ -1,0 +1,26 @@
+#!/bin/bash
+set -e -o pipefail
+ulimit -n 16384
+
+SLANG="$1"
+BATCH="$2"
+shift 2
+SPLIT_ARGS="$@"
+
+echo "Processing (${SLANG}) ${BATCH}"
+
+< ${BATCH}/plain_text.gz gzip -dc \
+| python3 $SPLIT --langcode $SLANG $SPLIT_ARGS \
+| gzip -9c \
+> ${TMPDIR}/sentences.$$.gz
+
+echo "Testing output"
+
+docs_pt=$(gzip -cd ${BATCH}/plain_text.gz | wc -l)
+docs_st=$(gzip -cd ${TMPDIR}/sentences.$$.gz | wc -l)
+echo "Expecting $docs_pt documents, found $docs_st"
+test $docs_pt -eq $docs_st || exit 1
+
+mv ${TMPDIR}/sentences.$$.gz ${BATCH}/sentences.gz
+echo "Copied result (${SLANG}) ${BATCH}"
+

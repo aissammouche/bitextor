@@ -162,15 +162,15 @@ def validate_args(config):
 
     if "deferred" in config:
         schema['until']['allowed'].append('deferred')
-        schema['parallelWorkers']['allowed'].append('deferred')
+        # schema['parallelWorkers']['allowed'].append('deferred')
 
     if 'bifixer' in config:
         schema['until']['allowed'].append('bifixer')
-        schema['parallelWorkers']['allowed'].append('bifixer')
+        # schema['parallelWorkers']['allowed'].append('bifixer')
 
     if 'bicleaner' in config:
         schema['until']['allowed'].append('bicleaner')
-        schema['parallelWorkers']['allowed'].append('bicleaner')
+        # schema['parallelWorkers']['allowed'].append('bicleaner')
 
     if 'until' in config and (config['until'] == 'filter' or config['until'] == 'bifixer'):
         sys.stderr.write("WARNING: your target consists of temporary files. Make sure to use --notemp parameter to preserve your output\n")

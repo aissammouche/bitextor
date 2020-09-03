@@ -235,7 +235,7 @@ TARGETS = TARGET_2_WARCS.keys()
 #################################################################
 ### WORKFLOW EXECUTION ##########################################
 
-# THREADS = {'split': 1, 'translate': 1, 'tokenise_src': 1, 'tokenise_trg': 1, 'docalign': 1, 'segalign': 1, 'deferred': 1, 'bifixer': 1, 'bicleaner': 1, 'sents': 1}
+THREADS = {'split': 1, 'translate': 1, 'tokenise_src': 1, 'tokenise_trg': 1, 'docalign': 1, 'segalign': 1, 'deferred': 1, 'bifixer': 1, 'bicleaner': 1, 'sents': 1}
 # if 'parallelWorkers' in config:
 #     for k in config['parallelWorkers']:
 #         THREADS[k] = config['parallelWorkers'][k]
@@ -423,40 +423,33 @@ def get_batches(lang):
             batches.append(line.strip())
     return batches
 
-rule split_perl:
-    input: f'{DATADIR}/shards/{{lang}}/{{shard}}/{{batch}}/plain_text.gz'
-    output: f'{DATADIR}/shards/{{lang}}/{{shard}}/{{batch}}/sentences.gz'
-    params:
-        batch=f'{DATADIR}/shards/{{lang}}/{{shard}}/{{batch}}'
-    threads: THREADS['split']
-    shell: '''
-        export PERL=perl
-        export SPLIT={BITEXTOR}/preprocess/moses/ems/support/split-sentences.perl
-        export TMPDIR=$(mktemp -d --tmpdir {TMPDIR})
-        bash {BITEXTOR}/scripts/03.split-text {wildcards.lang} {params.batch}
-        '''
-
-# rule split_python:
+# rule split_perl:
 #     input: f'{DATADIR}/shards/{{lang}}/{{shard}}/{{batch}}/plain_text.gz'
-#     params:
-#         splitter = lambda wildcards: get_lang_or_default(SENTTOKS, wildcards.lang),
-#         customnbp = lambda wildcards: get_customnbp(CUSTOMNBPS, wildcards.lang),
 #     output: f'{DATADIR}/shards/{{lang}}/{{shard}}/{{batch}}/sentences.gz'
-#     threads: THREADS['split']
+#     params:
+#         batch = f'{DATADIR}/shards/{{lang}}/{{shard}}/{{batch}}'
 #     shell: '''
-#         parallel_cmd=""
-#         if [ {threads} -gt 1 ]; then
-#             parallel_cmd="parallel --gnu --halt 2 --pipe --j {threads} -k"
-#         fi
-#         splitter=""; if [ "{params.splitter}" != "" ]; then splitter='--sentence-splitter "{params.splitter}"'; fi
-#         customnbp=""; if [ "{params.customnbp}" != "" ]; then customnbp='--customnbp "{params.customnbp}"'; fi
-#         zcat {input} \
-#             | {PROFILING} ${{parallel_cmd}} {BITEXTOR}/bitextor-split.py \
-#                 $splitter $customnbp \
-#                 --langcode "{wildcards.lang}" \
-#                 {PRUNE_THRESHOLD} {PRUNE_TYPE} \
-#             | pigz -c > {output}
+#         export PERL=perl
+#         export SPLIT={BITEXTOR}/preprocess/moses/ems/support/split-sentences.perl
+#         export TMPDIR={TMPDIR}
+#         bash {BITEXTOR}/scripts/03.split-text-perl {wildcards.lang} {params.batch}
 #         '''
+
+rule split_python:
+    input: f'{DATADIR}/shards/{{lang}}/{{shard}}/{{batch}}/plain_text.gz'
+    params:
+        batch = f'{DATADIR}/shards/{{lang}}/{{shard}}/{{batch}}',
+        splitter = lambda wildcards: get_lang_or_default(SENTTOKS, wildcards.lang),
+        customnbp = lambda wildcards: get_customnbp(CUSTOMNBPS, wildcards.lang),
+    output: f'{DATADIR}/shards/{{lang}}/{{shard}}/{{batch}}/sentences.gz'
+    shell: '''
+        splitter=""; if [ "{params.splitter}" != "" ]; then splitter='--sentence-splitter "{params.splitter}"'; fi
+        customnbp=""; if [ "{params.customnbp}" != "" ]; then customnbp='--customnbp "{params.customnbp}"'; fi
+        export SPLIT={BITEXTOR}/bitextor-split.py
+        export TMPDIR={TMPDIR}
+        mkdir -p $TMPDIR
+        bash {BITEXTOR}/scripts/03.split-text-python {wildcards.lang} {params.batch} $splitter $customnbp {PRUNE_THRESHOLD} {PRUNE_TYPE}
+        '''
 
 rule aggregate_split:
     input: lambda wildcards: [f'{batch}/sentences.gz' for batch in get_batches(wildcards.lang)]
