@@ -71,7 +71,9 @@ def validate_args(config):
             'profiling': {'type': 'boolean', 'default': False},
             # execute until X:
             'until': {'type': 'string', 'allowed': ['crawl', 'preprocess', 'shard', 'split', 'translate', 'tokenise_src', 'tokenise_trg', 'docalign', 'segalign', 'filter']},
-            'parallelWorkers': {'type': 'dict', 'allowed': ['split', 'translate', 'tokenise_src', 'tokenise_trg', 'docalign', 'segalign', 'sents'], 'valuesrules': {'type': 'integer', 'min': 1}},
+
+            # 'parallelWorkers': {'type': 'dict', 'allowed': ['split', 'translate', 'tokenise_src', 'tokenise_trg', 'docalign', 'segalign', 'sents'], 'valuesrules': {'type': 'integer', 'min': 1}},
+
             # data definition
             # TODO: check that one of these is specified?
             'hosts': {'type': 'list', 'dependencies': 'crawler'},
