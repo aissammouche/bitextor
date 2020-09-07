@@ -1,0 +1,43 @@
+#!/bin/bash
+set -euo pipefail
+
+SLANG="$1"
+SRC_BATCH="$2"
+REF_BATCH="$3"
+
+SHARD_ID=$(basename $(dirname $SRC_BATCH))
+SRC_BATCH_ID=$(basename $SRC_BATCH)
+REF_BATCH_ID=$(basename $REF_BATCH)
+
+PAIR_FORMAT='{"shard": "'$SHARD_ID'", "'$SLANG'":'$SRC_BATCH_ID', "'$TARGET_LANG'":'$REF_BATCH_ID'}'
+TIME_FORMAT='{"user":"%U", "system":"%S", "elapsed":"%E", "cpu":"%P", "text":%X, "data":%D, "max":%M, "inputs":%I, "output":%O, "major":%F, "minor":%R, "swaps":%W}'
+
+OUTPUT=$(mktemp --suffix=.gz --tmpdir=$SCRATCH)
+
+/usr/bin/time -f '{"task":"docalign", "pair":'"$PAIR_FORMAT"', "time":'"$TIME_FORMAT"'}' \
+${DOCALIGN} -j ${THREADS} --threshold 0.1 \
+	${SRC_BATCH}/tokenised_${TARGET_LANG}.gz \
+	${REF_BATCH}/tokenised.gz \
+| tee ${SRC_BATCH}/pairs-${REF_BATCH_ID}.txt \
+| ${DOCJOIN} \
+	-li\
+	-ri\
+	-l ${SRC_BATCH}/sentences.gz\
+	-r ${REF_BATCH}/sentences.gz\
+	-l ${SRC_BATCH}/sentences_${TARGET_LANG}.gz\
+| /usr/bin/time -f '{"task":"bleualign", "pair":'"$PAIR_FORMAT"', "time":'"$TIME_FORMAT"'}' \
+parallel \
+	-j${THREADS} \
+	--halt 2 \
+	--pipe \
+	--roundrobin \
+	-N 1 \
+	${BLEUALIGN} --bleu-threshold 0.2 \
+| gzip -c \
+> $OUTPUT
+
+DEST=${SRC_BATCH}/aligned-${REF_BATCH_ID}.gz
+cp $OUTPUT $DEST.$$
+mv $DEST.$$ $DEST
+echo "Copied result (${SLANG}) ${SRC_BATCH}"
+rm $OUTPUT
