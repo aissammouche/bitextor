@@ -70,10 +70,8 @@ def validate_args(config):
             # profiling
             'profiling': {'type': 'boolean', 'default': False},
             # execute until X:
-            'until': {'type': 'string', 'allowed': ['crawl', 'preprocess', 'shard', 'split', 'translate', 'tokenise_src', 'tokenise_trg', 'docalign', 'segalign', 'filter']},
-
-            # 'parallelWorkers': {'type': 'dict', 'allowed': ['split', 'translate', 'tokenise_src', 'tokenise_trg', 'docalign', 'segalign', 'sents'], 'valuesrules': {'type': 'integer', 'min': 1}},
-
+            'until': {'type': 'string', 'allowed': ['crawl', 'preprocess', 'shard', 'split', 'translate', 'tokenise', 'align', 'filter']},
+            'parallelWorkers': {'type': 'dict', 'allowed': ['translate', 'tokenise', 'align', 'sents'], 'valuesrules': {'type': 'integer', 'min': 1}},
             # data definition
             # TODO: check that one of these is specified?
             'hosts': {'type': 'list', 'dependencies': 'crawler'},
@@ -122,12 +120,12 @@ def validate_args(config):
             # mt
             'alignerCmd': {'type': 'string', 'dependencies': {'documentAligner': 'externalMT'}},
             'translationDirection': {'type': 'string', 'dependencies': {'documentAligner': 'externalMT'}},
-            'documentAlignerThreshold': {'type': 'float', 'dependencies': {'documentAligner': 'externalMT'}},
+            # 'documentAlignerThreshold': {'type': 'float', 'dependencies': {'documentAligner': 'externalMT'}},
             # dictionary
             'dic': {'type': 'string', 'check_with': isfile}, # TODO: depends on documentAligner=DIC, or sentenceAligner=hunalign, TODO: check if dictionary exists, use training subworkflow if not
             # sentence alignment
             'sentenceAligner': {'type': 'string', 'allowed': ['bleualign', 'hunalign'], 'default': 'bleualign'},
-            'sentenceAlignerThreshold': {'type': 'float'},
+            # 'sentenceAlignerThreshold': {'type': 'float'},
             # post processing
             'deferred': {'type': 'boolean', 'default': False},
             'bifixer': {'type': 'boolean', 'default': False},
@@ -162,15 +160,15 @@ def validate_args(config):
 
     if "deferred" in config:
         schema['until']['allowed'].append('deferred')
-        # schema['parallelWorkers']['allowed'].append('deferred')
+        schema['parallelWorkers']['allowed'].append('deferred')
 
     if 'bifixer' in config:
         schema['until']['allowed'].append('bifixer')
-        # schema['parallelWorkers']['allowed'].append('bifixer')
+        schema['parallelWorkers']['allowed'].append('bifixer')
 
     if 'bicleaner' in config:
         schema['until']['allowed'].append('bicleaner')
-        # schema['parallelWorkers']['allowed'].append('bicleaner')
+        schema['parallelWorkers']['allowed'].append('bicleaner')
 
     if 'until' in config and (config['until'] == 'filter' or config['until'] == 'bifixer'):
         sys.stderr.write("WARNING: your target consists of temporary files. Make sure to use --notemp parameter to preserve your output\n")
