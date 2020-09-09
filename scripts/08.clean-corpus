@@ -8,12 +8,12 @@ INPUT="$1"
 SECONDS=0
 # Bifix!
 cat $INPUT \
-    | python bifixer/bifixer/bifixer.py - $MYTEMP/fixed $L1 $L2 $BIFIXER_PARAMS
+    | python $BIFIXER - $MYTEMP/fixed $L1 $L2 $BIFIXER_PARAMS
 
 # Classify!
 # Use cache to not preprocess duplicates
 cat $MYTEMP/fixed \
-    | $PREPROCESS_BIN/cache -k 3,4 bicleaner-classify-lite $BICLEANER_PARAMS - - $BICLEANER_MODEL \
+    | $PREPROCESS_BIN/cache -k 3,4 $BICLEANER_LITE  $BICLEANER_PARAMS - - $BICLEANER_MODEL \
     | paste $MYTEMP/fixed - \
     | gzip \
     > $MYTEMP/classified.gz
@@ -21,8 +21,8 @@ cat $MYTEMP/fixed \
 # Filter by bicleaner score, append ELRC stats
 # and sort by bifixerhash and bifixer score
 zcat $MYTEMP/classified.gz \
-    | python $BITEXTOR/bitextor-filterbicleaner.py --threshold $THRESHOLD \
-    | python $BITEXTOR/bitextor-elrc-filtering.py -c "url1,url2,seg1,seg2,bifixerhash,bifixerscore,bicleaner" -s \
+    | python $FILTER_BICLEANER --threshold $THRESHOLD \
+    | python $FILTER_ELRC -c "url1,url2,seg1,seg2,bifixerhash,bifixerscore,bicleaner" -s \
     | LC_ALL=C sort -t$'\t' -k5,5 -k6,6nr \
     | gzip \
     > $MYTEMP/filtered${THRESHOLD/./}.gz

@@ -693,11 +693,14 @@ rule clean:
         export THRESHOLD={BICLEANER_THRESHOLD}
         export L1={LANG1}
         export L2={LANG2}
+        export BIFIXER={BITEXTOR}/bifixer/bifixer/bifixer.py
         export BIFIXER_PARAMS="-q {AGGRESSIVE_DEDUP}"
+        export BICLEANER_LITE={BITEXTOR}/bicleaner/bicleaner/bicleaner_classifier_lite.py
         export BICLEANER_PARAMS="--score_only -q"
         export BICLEANER_MODEL={BICLEANER_MODEL}
-        export BITEXTOR={BITEXTOR}
         export PREPROCESS_BIN={BITEXTOR}/preprocess/bin
+        export FILTER_BICLEANER={BITEXTOR}/bitextor-filterbicleaner.py
+        export FILTER_ELRC={BITEXTOR}/bitextor-elrc-filtering.py
         bash {BITEXTOR}/scripts/08.clean-corpus <(zcat -f {input.segalign})
         zcat -f $OUTPUT.filtered${{THRESHOLD/./}}.gz > {output}
         '''
