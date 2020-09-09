@@ -161,38 +161,31 @@ if "sentenceAlignerThreshold" in config:
 FIELDS = ['url1','url2','seg1','seg2','aligner']
 DEFERRED = False
 DEFERRED_FIELDS = []
-BIFIXER = False
+CLEAN = False
 BIFIXER_FIELDS = []
 AGGRESSIVE_DEDUP = "--aggressive_dedup"
-BICLEANER = False
 BICLEANER_MODEL = ""
 BICLEANER_FIELDS = []
 BICLEANER_THRESHOLD = 0.0
-ELRC = False
 ELRC_FIELDS = []
+
 TMX = False
 DEDUPED = False
 # TODO: add rawCorpus option to generate lang1-lang2.raw.gz
 OUTPUT_FILES = ["sent", "raw"]
-
 if 'deferred' in config and config['deferred']:
     DEFERRED = True
     DEFERRED_FIELDS = ['deferredseg1','checksum1','deferredseg2','checksum2']
     PARSER = "--parser 'lxml'"
-if 'bifixer' in config and config['bifixer']:
-    BIFIXER = True
+if 'cleaning' in config and config['cleaning']:
     BIFIXER_FIELDS = ['bifixerhash','bifixerscore']
-if 'aggressiveDedup' in config and not config['aggressiveDedup']:
-    AGGRESSIVE_DEDUP = ''
-if 'bicleaner' in config:
-    BICLEANER = True
     BICLEANER_MODEL = config['bicleaner']
     BICLEANER_FIELDS = ['bicleaner']
-if 'bicleanerThreshold' in config:
-    BICLEANER_THRESHOLD = config['bicleanerThreshold']
-if 'elrc' in config and config['elrc']:
-    ELRC = True
     ELRC_FIELDS = ['lengthratio','numTokensSL','numTokensTL']
+    if 'bicleanerThreshold' in config:
+        BICLEANER_THRESHOLD = config['bicleanerThreshold']
+    if 'aggressiveDedup' in config and not config['aggressiveDedup']:
+        AGGRESSIVE_DEDUP = ''
 if 'tmx' in config and config['tmx']:
     TMX = True
     OUTPUT_FILES.append('not-deduped.tmx')
@@ -243,7 +236,7 @@ TARGETS = TARGET_2_WARCS.keys()
 #################################################################
 ### WORKFLOW EXECUTION ##########################################
 
-THREADS = {'split': 1, 'translate': 1, 'tokenise': 1, 'align': 1, 'deferred': 1, 'bifixer': 1, 'bicleaner': 1, 'sents': 1}
+THREADS = {'split': 1, 'translate': 1, 'tokenise': 1, 'align': 1, 'deferred': 1, 'sents': 1}
 if 'parallelWorkers' in config:
     for k in config['parallelWorkers']:
         THREADS[k] = config['parallelWorkers'][k]
@@ -276,12 +269,9 @@ else:
     OUTPUT.append(f'{DATADIR}/shards/05.tokenise.{SRC_LANG}2{TRG_LANG}')
     if UNTIL == 'align':
         OUTPUT.append(f'{TRANSIENT}/06.aligned.{SRC_LANG}_{TRG_LANG}')
-    elif UNTIL == 'bifixer':
-        OUTPUT.append(f'{TRANSIENT}/07_01.bifixer.{LANG1}_{LANG2}')
-    elif UNTIL == 'bicleaner':
-        OUTPUT.append(f'{TRANSIENT}/07_02.bicleaner.{LANG1}_{LANG2}')
-    elif UNTIL == 'filter':
-        OUTPUT.append(f'{TRANSIENT}/07_03.filter.{LANG1}_{LANG2}')
+    elif UNTIL == 'clean':
+        OUTPUT.append(f'{TRANSIENT}/08.classified.{LANG1}_{LANG2}')
+        OUTPUT.append(f'{TRANSIENT}/08.filtered.{LANG1}_{LANG2}')
 shell.prefix("set -euo pipefail;")
 rule all:
     input: OUTPUT
@@ -686,9 +676,13 @@ def get_postproc_batches():
 
 rule clean:
     input: segalign=f'{TRANSIENT}/{LANG1}_{LANG2}/{split_input_filename}/{{batch}}.gz',
-    output: temp(f'{TRANSIENT}/{LANG1}_{LANG2}/07_03.filtered/{{batch}}')
+    output: 
+        classified = f'{TRANSIENT}/{LANG1}_{LANG2}/08.clean/{{batch}}.classified.gz',
+        filtered = f'{TRANSIENT}/{LANG1}_{LANG2}/08.clean/{{batch}}.filtered{BICLEANER_THRESHOLD}.gz'
+    params:
+        prefix = f'{TRANSIENT}/{LANG1}_{LANG2}/08.clean/{{batch}}'
     shell: '''
-        export OUTPUT={output}
+        export OUTPUT={params.prefix}
         export MYTEMP=$(mktemp -d {TMPDIR}/clean.XXXXXX)
         export THRESHOLD={BICLEANER_THRESHOLD}
         export L1={LANG1}
@@ -702,23 +696,25 @@ rule clean:
         export FILTER_BICLEANER={BITEXTOR}/bitextor-filterbicleaner.py
         export FILTER_ELRC={BITEXTOR}/bitextor-elrc-filtering.py
         bash {BITEXTOR}/scripts/08.clean-corpus <(zcat -f {input.segalign})
-        zcat -f $OUTPUT.filtered${{THRESHOLD/./}}.gz > {output}
         '''
 
 rule aggregate_clean:
-    input: lambda wildcards: [f'{TRANSIENT}/{LANG1}_{LANG2}/07_03.filtered/{{batch}}' for batch in get_postproc_batches()]
-    output: f'{TRANSIENT}/07_03.filter.{LANG1}_{LANG2}'
-    shell: ''' echo {input} | tr ' ' '\n' > {output} '''
+    input: lambda wildcards: [f'{TRANSIENT}/{LANG1}_{LANG2}/08.clean/{{batch}}.{{f}}' for batch in get_postproc_batches() for f in ['classified.gz', f'filtered{BICLEANER_THRESHOLD}.gz']]
+    output:
+        classified = f'{TRANSIENT}/08.classified.{LANG1}_{LANG2}',
+        filtered = f'{TRANSIENT}/08.filtered.{LANG1}_{LANG2}'
+    shell: '''
+        echo {input} | tr ' ' '\n' | grep 'classified' > {output.classified}
+        echo {input} | tr ' ' '\n' | grep 'filtered' > {output.filtered}
+        '''
 
 raw_input_filename = ""
-if not BICLEANER:
+if not CLEAN:
     raw_input_filename = split_input_filename
-else:
-    raw_input_filename = "07_03.filtered"
-
-extension = ""
-if raw_input_filename in ["06.aligned", "07_00.deferred"]:
     extension = ".gz"
+else:
+    raw_input_filename = "08.clean"
+    extension = f".filtered{BICLEANER_THRESHOLD}.gz"
 
 rule raw:
     input: lambda wildcards: [f'{TRANSIENT}/{LANG1}_{LANG2}/{raw_input_filename}/{batch}{extension}' for batch in get_postproc_batches()]

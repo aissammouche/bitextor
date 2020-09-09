@@ -131,11 +131,11 @@ def validate_args(config):
             # 'sentenceAlignerThreshold': {'type': 'float'},
             # post processing
             'deferred': {'type': 'boolean', 'default': False},
-            'bifixer': {'type': 'boolean', 'default': False},
-            'aggressiveDedup': {'type': 'boolean', 'dependencies': {'bifixer': True}}, # mark near duplicates as duplicates
-            'bicleaner': {'type': 'string', 'check_with': isfile}, # TODO: check that model exists, use training subworkflow if not
-            'bicleanerThreshold': {'type': 'float', 'dependencies': 'bicleaner'},
-            'elrc': {'type': 'boolean'},
+            # TODO: 'cleaning' is kind of redundant, just us 'bicleaner' as an indicator of whether cleaning will be done or not
+            'cleaning': {'type': 'boolean', 'default': False}, # includes bifixer, bicleaner, filtering and elrc
+            'aggressiveDedup': {'type': 'boolean', 'dependencies': {'cleaning': True}}, # mark near duplicates as duplicates
+            'bicleaner': {'type': 'string', 'dependencies': {'cleaning': True}, 'check_with': isfile}, # TODO: check that model exists, use training subworkflow if not
+            'bicleanerThreshold': {'type': 'float', 'dependencies': {'cleaning': True}},
             'tmx': {'type': 'boolean'},
             'deduped': {'type': 'boolean'}
             }
@@ -165,16 +165,9 @@ def validate_args(config):
         schema['until']['allowed'].append('deferred')
         schema['parallelWorkers']['allowed'].append('deferred')
 
-    if 'bifixer' in config:
-        schema['until']['allowed'].append('bifixer')
-        schema['parallelWorkers']['allowed'].append('bifixer')
-
-    if 'bicleaner' in config:
-        schema['until']['allowed'].append('bicleaner')
-        schema['parallelWorkers']['allowed'].append('bicleaner')
-
-    if 'until' in config and (config['until'] == 'filter' or config['until'] == 'bifixer'):
-        sys.stderr.write("WARNING: your target consists of temporary files. Make sure to use --notemp parameter to preserve your output\n")
+    if 'cleaning' in config:
+        schema['until']['allowed'].append('clean')
+        schema['bicleaner']['required'] = True
 
     v = Validator(schema)
     b = v.validate(config)
