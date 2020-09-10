@@ -167,6 +167,7 @@ AGGRESSIVE_DEDUP = "--aggressive_dedup"
 BICLEANER_MODEL = ""
 BICLEANER_FIELDS = []
 BICLEANER_THRESHOLD = 0.0
+FILTERED = "00"
 ELRC_FIELDS = []
 
 TMX = False
@@ -178,12 +179,14 @@ if 'deferred' in config and config['deferred']:
     DEFERRED_FIELDS = ['deferredseg1','checksum1','deferredseg2','checksum2']
     PARSER = "--parser 'lxml'"
 if 'cleaning' in config and config['cleaning']:
-    BIFIXER_FIELDS = ['bifixerhash','bifixerscore']
+    CLEAN = True
     BICLEANER_MODEL = config['bicleaner']
+    BIFIXER_FIELDS = ['bifixerhash','bifixerscore']
     BICLEANER_FIELDS = ['bicleaner']
     ELRC_FIELDS = ['lengthratio','numTokensSL','numTokensTL']
     if 'bicleanerThreshold' in config:
         BICLEANER_THRESHOLD = config['bicleanerThreshold']
+        FILTERED = str(BICLEANER_THRESHOLD).replace(".", "")
     if 'aggressiveDedup' in config and not config['aggressiveDedup']:
         AGGRESSIVE_DEDUP = ''
 if 'tmx' in config and config['tmx']:
@@ -622,20 +625,16 @@ rule deferred_documents:
             | awk -F $'\t' '{{ print $1 | "xz > {output.text}"; print $3 | "xz > {output.deferred}" }}'
         '''
 
-deferred_input = rules.align.output
-# if SEGALIGN == "hunalign":
-#     deferred_input = rules.hunalign.output
-
 rule deferred_segments:
     input:
-        deferred_input,
+        rules.align.output,
         f'{DATADIR}/shards/{SRC_LANG}/{{shard}}/{{src_batch}}/html5lib_plain_text.xz',
         f'{DATADIR}/shards/{SRC_LANG}/{{shard}}/{{src_batch}}/url.gz',
         f'{DATADIR}/shards/{SRC_LANG}/{{shard}}/{{src_batch}}/deferred_documents.xz',
         f'{DATADIR}/shards/{TRG_LANG}/{{shard}}/{{trg_batch}}/html5lib_plain_text.xz',
         f'{DATADIR}/shards/{TRG_LANG}/{{shard}}/{{trg_batch}}/url.gz',
         f'{DATADIR}/shards/{TRG_LANG}/{{shard}}/{{trg_batch}}/deferred_documents.xz'
-    output: temp(f'{TRANSIENT}/{SRC_LANG}_{TRG_LANG}/{{shard}}/{SRC_LANG}{{src_batch}}_{TRG_LANG}{{trg_batch}}.07_00.deferred')
+    output: temp(f'{TRANSIENT}/{SRC_LANG}_{TRG_LANG}/{{shard}}/{SRC_LANG}{{src_batch}}_{TRG_LANG}{{trg_batch}}.07.deferred')
     shell: '''
         zcat {input[0]} \
             | python3 {BITEXTOR}/standoff/deferred_sentences.py <(paste <(xzcat {input[1]} {input[4]}) <(zcat {input[2]} {input[5]}) <(xzcat {input[3]} {input[6]})) \
@@ -645,7 +644,7 @@ rule deferred_segments:
 split_input_filename = '06.aligned'
 split_input_extension = '.gz'
 if DEFERRED:
-    split_input_filename = '07_00.deferred'
+    split_input_filename = '07.deferred'
     split_input_extension = ''
 
 # split segalign results into balanced chunks
@@ -676,7 +675,7 @@ rule clean:
     input: segalign=f'{TRANSIENT}/{LANG1}_{LANG2}/{split_input_filename}/{{batch}}.gz',
     output: 
         classified = f'{TRANSIENT}/{LANG1}_{LANG2}/08.clean/{{batch}}.classified.gz',
-        filtered = f'{TRANSIENT}/{LANG1}_{LANG2}/08.clean/{{batch}}.filtered{BICLEANER_THRESHOLD}.gz'
+        filtered = f'{TRANSIENT}/{LANG1}_{LANG2}/08.clean/{{batch}}.filtered{FILTERED}.gz'
     params:
         prefix = f'{TRANSIENT}/{LANG1}_{LANG2}/08.clean/{{batch}}'
     shell: '''
@@ -697,7 +696,7 @@ rule clean:
         '''
 
 rule aggregate_clean:
-    input: lambda wildcards: [f'{TRANSIENT}/{LANG1}_{LANG2}/08.clean/{{batch}}.{{f}}' for batch in get_postproc_batches() for f in ['classified.gz', f'filtered{BICLEANER_THRESHOLD}.gz']]
+    input: lambda wildcards: [f'{TRANSIENT}/{LANG1}_{LANG2}/08.clean/{{batch}}.{{f}}' for batch in get_postproc_batches() for f in ['classified.gz', f'filtered{FILTERED}.gz']]
     output:
         classified = f'{TRANSIENT}/08.classified.{LANG1}_{LANG2}',
         filtered = f'{TRANSIENT}/08.filtered.{LANG1}_{LANG2}'
@@ -712,7 +711,7 @@ if not CLEAN:
     extension = ".gz"
 else:
     raw_input_filename = "08.clean"
-    extension = f".filtered{BICLEANER_THRESHOLD}.gz"
+    extension = f'.filtered{FILTERED}.gz'
 
 rule raw:
     input: lambda wildcards: [f'{TRANSIENT}/{LANG1}_{LANG2}/{raw_input_filename}/{batch}{extension}' for batch in get_postproc_batches()]
