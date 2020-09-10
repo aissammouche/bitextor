@@ -503,7 +503,7 @@ rule aggregate_translate:
 #         export TARGET_LANG={TRG_LANG}
 #         export TOKENISE={BITEXTOR}/preprocess/moses/tokenizer/tokenizer.perl
 #         export TMPDIR={TMPDIR}
-#         export B64FILTER=~/go/bin/b64filter
+#         export B64FILTER={BITEXTOR}/preprocess/bin/b64filter
 #         export CACHE={BITEXTOR}/preprocess/bin/cache
 #         bash {BITEXTOR}/scripts/05.tokenise {SRC_LANG} {params.batch}
 #         '''
@@ -537,7 +537,7 @@ rule tokenise_translated:
 #         export TARGET_LANG={TRG_LANG}
 #         export TOKENISE={BITEXTOR}/preprocess/moses/tokenizer/tokenizer.perl
 #         export TMPDIR={TMPDIR}
-#         export B64FILTER=~/go/bin/b64filter
+#         export B64FILTER={BITEXTOR}/preprocess/bin/b64filter
 #         export CACHE={BITEXTOR}/preprocess/bin/cache
 #         bash {BITEXTOR}/scripts/05.tokenise {TARGET_LANG} {params.batch}
 #         '''
