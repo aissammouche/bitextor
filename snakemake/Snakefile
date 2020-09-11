@@ -420,32 +420,29 @@ def get_batches(lang):
             batches.append(line.strip())
     return batches
 
-# rule split_perl:
-#     input: f'{DATADIR}/shards/{{lang}}/{{shard}}/{{batch}}/plain_text.gz'
-#     output: f'{DATADIR}/shards/{{lang}}/{{shard}}/{{batch}}/sentences.gz'
-#     params:
-#         batch = f'{DATADIR}/shards/{{lang}}/{{shard}}/{{batch}}'
-#     shell: '''
-#         export PERL=perl
-#         export SPLIT={BITEXTOR}/preprocess/moses/ems/support/split-sentences.perl
-#         export TMPDIR={TMPDIR}
-#         bash {BITEXTOR}/scripts/03.split-text {wildcards.lang} {params.batch}
-#         '''
-
-rule split_python:
+rule split:
     input: f'{DATADIR}/shards/{{lang}}/{{shard}}/{{batch}}/plain_text.gz'
+    output: f'{DATADIR}/shards/{{lang}}/{{shard}}/{{batch}}/sentences.gz'
     params:
         batch = f'{DATADIR}/shards/{{lang}}/{{shard}}/{{batch}}',
         splitter = lambda wildcards: get_lang_or_default(SENTTOKS, wildcards.lang),
         customnbp = lambda wildcards: get_customnbp(CUSTOMNBPS, wildcards.lang),
-    output: f'{DATADIR}/shards/{{lang}}/{{shard}}/{{batch}}/sentences.gz'
     shell: '''
-        splitter=""; if [ "{params.splitter}" != "" ]; then splitter='--sentence-splitter "{params.splitter}"'; fi
-        customnbp=""; if [ "{params.customnbp}" != "" ]; then customnbp='--customnbp "{params.customnbp}"'; fi
-        export SPLIT={BITEXTOR}/bitextor-split.py
-        export TMPDIR={TMPDIR}
-        mkdir -p $TMPDIR
-        bash {BITEXTOR}/scripts/03.split-text-python {wildcards.lang} {params.batch} $splitter $customnbp {PRUNE_THRESHOLD} {PRUNE_TYPE}
+        if [ "{params.splitter}" = "" ] && [ "{params.customnbp}" = "" ]
+        then
+            export PERL=perl
+            export SPLIT={BITEXTOR}/preprocess/moses/ems/support/split-sentences.perl
+            export TMPDIR={TMPDIR}
+            mkdir -p {TMPDIR}
+            bash {BITEXTOR}/scripts/03.split-text {wildcards.lang} {params.batch}
+        else
+            splitter=""; if [ "{params.splitter}" != "" ]; then splitter='--sentence-splitter "{params.splitter}"'; fi
+            customnbp=""; if [ "{params.customnbp}" != "" ]; then customnbp='--customnbp "{params.customnbp}"'; fi
+            export SPLIT={BITEXTOR}/bitextor-split.py
+            export TMPDIR={TMPDIR}
+            mkdir -p $TMPDIR
+            bash {BITEXTOR}/scripts/03.split-text-python {wildcards.lang} {params.batch} $splitter $customnbp {PRUNE_THRESHOLD} {PRUNE_TYPE}
+        fi
         '''
 
 rule aggregate_split:
@@ -493,72 +490,62 @@ rule aggregate_translate:
     output: f'{DATADIR}/shards/04.translate.{SRC_LANG}2{TRG_LANG}'
     shell: ''' echo "{input}" | tr ' ' '\n' > {output} '''
 
-# rule tokenise_translated:
-#     input: translation_output
-#     output: f'{DATADIR}/shards/{SRC_LANG}/{{shard}}/{{src_batch}}/tokenised_{TRG_LANG}.gz'
-#     threads: THREADS['tokenise']
-#     params:
-#         batch = f'{DATADIR}/shards/{SRC_LANG}/{{shard}}/{{src_batch}}'
-#     shell: '''
-#         export THREADS={threads}
-#         export TARGET_LANG={TRG_LANG}
-#         export TOKENISE={BITEXTOR}/preprocess/moses/tokenizer/tokenizer.perl
-#         export TMPDIR={TMPDIR}
-#         export B64FILTER={BITEXTOR}/preprocess/bin/b64filter
-#         export CACHE={BITEXTOR}/preprocess/bin/cache
-#         bash {BITEXTOR}/scripts/05.tokenise {SRC_LANG} {params.batch}
-#         '''
- 
 rule tokenise_translated:
     input: translation_output
     output: f'{DATADIR}/shards/{SRC_LANG}/{{shard}}/{{src_batch}}/tokenised_{TRG_LANG}.gz'
+    threads: THREADS['tokenise']
     params:
         batch = f'{DATADIR}/shards/{SRC_LANG}/{{shard}}/{{src_batch}}',
-        tokeniser = lambda wildcards: get_lang_or_default(WORDTOKS, TRG_LANG),
+        tokenizer = lambda wildcards: get_lang_or_default(WORDTOKS, TRG_LANG),
         lemmatizer = lambda wildcards: get_lang_or_default(MORPHTOKS, TRG_LANG)
-    threads: THREADS['tokenise']
     shell: '''
-        export THREADS={threads}
-        export TARGET_LANG={TRG_LANG}
-        export TOKENISE={BITEXTOR}/bitextor-tokenize.py
-        export TMPDIR={TMPDIR}
-        wordtok=""; if [ "{params.tokeniser}" != "" ]; then wordtok='--word-tokenizer "{params.tokeniser}"'; fi
-        morphtok=""; if [ "{params.lemmatizer}" != "" ]; then morphtok='--morph-analyser "{params.lemmatizer}"'; fi
-        bash {BITEXTOR}/scripts/05.tokenise-python {SRC_LANG} {params.batch} $wordtok $morphtok
+        if [ "{params.tokenizer}" = "" ] && [ "{params.lemmatizer}" = "" ]
+        then
+            export THREADS={threads}
+            export TARGET_LANG={TRG_LANG}
+            export TOKENISE={BITEXTOR}/preprocess/moses/tokenizer/tokenizer.perl
+            export TMPDIR={TMPDIR}
+            export B64FILTER={BITEXTOR}/preprocess/bin/b64filter
+            export CACHE={BITEXTOR}/preprocess/bin/cache
+            bash {BITEXTOR}/scripts/05.tokenise {SRC_LANG} {params.batch}
+        else
+            export THREADS={threads}
+            export TARGET_LANG={TRG_LANG}
+            export TOKENISE={BITEXTOR}/bitextor-tokenize.py
+            export TMPDIR={TMPDIR}
+            wordtok=""; if [ "{params.tokenizer}" != "" ]; then wordtok='--word-tokenizer "{params.tokenizer}"'; fi
+            morphtok=""; if [ "{params.lemmatizer}" != "" ]; then morphtok='--morph-analyser "{params.lemmatizer}"'; fi
+            bash {BITEXTOR}/scripts/05.tokenise-python {SRC_LANG} {params.batch} $wordtok $morphtok
+        fi
         '''
  
-# rule tokenise_target:
-#     input: f'{DATADIR}/shards/{TRG_LANG}/{{shard}}/{{trg_batch}}/sentences.gz'
-#     output: f'{DATADIR}/shards/{TRG_LANG}/{{shard}}/{{trg_batch}}/tokenised.gz'
-#     threads: THREADS['tokenise']
-#     params:
-#         batch = f'{DATADIR}/shards/{TRG_LANG}/{{shard}}/{{trg_batch}}'
-#     shell: '''
-#         export THREADS={threads}
-#         export TARGET_LANG={TRG_LANG}
-#         export TOKENISE={BITEXTOR}/preprocess/moses/tokenizer/tokenizer.perl
-#         export TMPDIR={TMPDIR}
-#         export B64FILTER={BITEXTOR}/preprocess/bin/b64filter
-#         export CACHE={BITEXTOR}/preprocess/bin/cache
-#         bash {BITEXTOR}/scripts/05.tokenise {TARGET_LANG} {params.batch}
-#         '''
-
 rule tokenise_target:
     input: f'{DATADIR}/shards/{TRG_LANG}/{{shard}}/{{trg_batch}}/sentences.gz'
     output: f'{DATADIR}/shards/{TRG_LANG}/{{shard}}/{{trg_batch}}/tokenised.gz'
+    threads: THREADS['tokenise']
     params:
         batch = f'{DATADIR}/shards/{TRG_LANG}/{{shard}}/{{trg_batch}}',
-        tokeniser = lambda wildcards: get_lang_or_default(WORDTOKS, TRG_LANG),
+        tokenizer = lambda wildcards: get_lang_or_default(WORDTOKS, TRG_LANG),
         lemmatizer = lambda wildcards: get_lang_or_default(MORPHTOKS, TRG_LANG)
-    threads: THREADS['tokenise']
     shell: '''
-        export THREADS={threads}
-        export TARGET_LANG={TRG_LANG}
-        export TOKENISE={BITEXTOR}/bitextor-tokenize.py
-        export TMPDIR={TMPDIR}
-        wordtok=""; if [ "{params.tokeniser}" != "" ]; then wordtok='--word-tokenizer "{params.tokeniser}"'; fi
-        morphtok=""; if [ "{params.lemmatizer}" != "" ]; then morphtok='--morph-analyser "{params.lemmatizer}"'; fi
-        bash {BITEXTOR}/scripts/05.tokenise-python {TRG_LANG} {params.batch} $wordtok $morphtok
+        if [ "{params.tokenizer}" = "" ] && [ "{params.lemmatizer}" = "" ]
+        then
+            export THREADS={threads}
+            export TARGET_LANG={TRG_LANG}
+            export TOKENISE={BITEXTOR}/preprocess/moses/tokenizer/tokenizer.perl
+            export TMPDIR={TMPDIR}
+            export B64FILTER={BITEXTOR}/preprocess/bin/b64filter
+            export CACHE={BITEXTOR}/preprocess/bin/cache
+            bash {BITEXTOR}/scripts/05.tokenise {TRG_LANG} {params.batch}
+        else
+            export THREADS={threads}
+            export TARGET_LANG={TRG_LANG}
+            export TOKENISE={BITEXTOR}/bitextor-tokenize.py
+            export TMPDIR={TMPDIR}
+            wordtok=""; if [ "{params.tokenizer}" != "" ]; then wordtok='--word-tokenizer "{params.tokenizer}"'; fi
+            morphtok=""; if [ "{params.lemmatizer}" != "" ]; then morphtok='--morph-analyser "{params.lemmatizer}"'; fi
+            bash {BITEXTOR}/scripts/05.tokenise-python {TRG_LANG} {params.batch} $wordtok $morphtok
+        fi
         '''
 
 rule aggregate_tokenise_target:
