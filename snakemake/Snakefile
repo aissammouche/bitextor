@@ -659,7 +659,9 @@ def get_postproc_batches():
     return batches
 
 rule clean:
-    input: segalign=f'{TRANSIENT}/{LANG1}_{LANG2}/{split_input_filename}/{{batch}}.gz',
+    input:
+        segalign=f'{TRANSIENT}/{LANG1}_{LANG2}/{split_input_filename}/{{batch}}.gz',
+        model=BICLEANER_MODEL
     output: 
         classified = f'{TRANSIENT}/{LANG1}_{LANG2}/08.clean/{{batch}}.classified.gz',
         filtered = f'{TRANSIENT}/{LANG1}_{LANG2}/08.clean/{{batch}}.filtered{FILTERED}.gz'
@@ -674,8 +676,13 @@ rule clean:
         export BIFIXER={BITEXTOR}/bifixer/bifixer/bifixer.py
         export BIFIXER_PARAMS="-q {AGGRESSIVE_DEDUP}"
         export BICLEANER_LITE={BITEXTOR}/bicleaner/bicleaner/bicleaner_classifier_lite.py
-        export BICLEANER_PARAMS="--score_only -q"
         export BICLEANER_MODEL={BICLEANER_MODEL}
+        slang=$(egrep "source_lang" {BICLEANER_MODEL} | cut -d " " -f 2)
+        if [ "$slang" = "{SRC_LANG}" ]; then
+            export BICLEANER_PARAMS="--score_only -q"
+        else
+            export BICLEANER_PARAMS="--score_only -q --scol 4 --tcol 3"
+        fi
         export PREPROCESS_BIN={BITEXTOR}/preprocess/bin
         export FILTER_BICLEANER={BITEXTOR}/bitextor-filterbicleaner.py
         export FILTER_ELRC={BITEXTOR}/bitextor-elrc-filtering.py
