@@ -470,7 +470,7 @@ rule custom_translate:
         zcat {input.source} \
             | {PROFILING} {BITEXTOR}/preprocess/bin/b64filter \
                 {BITEXTOR}/preprocess/bin/cache \
-                    {BITEXTOR}/preprocess/bin/foldfilter \
+                    {BITEXTOR}/preprocess/bin/foldfilter -w 1000 \
                         parallel --gnu --halt 2 --pipe -j {params} -k {MT_COMMAND} \
             | pigz -c > {output}
         n_before=$(zcat {input.source} | base64 -d | wc -l)
@@ -518,7 +518,7 @@ rule tokenise_translated:
             bash {BITEXTOR}/scripts/05.tokenise-python {SRC_LANG} {params.batch} $wordtok $morphtok
         fi
         '''
- 
+
 rule tokenise_target:
     input: f'{DATADIR}/shards/{TRG_LANG}/{{shard}}/{{trg_batch}}/sentences.gz'
     output: f'{DATADIR}/shards/{TRG_LANG}/{{shard}}/{{trg_batch}}/tokenised.gz'
@@ -576,7 +576,7 @@ rule align: # docalign + bleualign
         export SCRATCH={TMPDIR}
         export DOCALIGN={BITEXTOR}/document-aligner/bin/docalign
         export DOCJOIN={BITEXTOR}/document-aligner/bin/docjoin
-        export BLEUALIGN={BITEXTOR}/bleualign-cpp/bleualign_cpp 
+        export BLEUALIGN={BITEXTOR}/bleualign-cpp/bleualign_cpp
         export THREADS={threads}
         bash {BITEXTOR}/scripts/06.align {SRC_LANG} {params.src_batch} {params.trg_batch}
         mv {params.src_batch}/aligned-{wildcards.trg_batch}.gz {output}
@@ -662,7 +662,7 @@ rule clean:
     input:
         segalign=f'{TRANSIENT}/{LANG1}_{LANG2}/{split_input_filename}/{{batch}}.gz',
         model=BICLEANER_MODEL
-    output: 
+    output:
         classified = f'{TRANSIENT}/{LANG1}_{LANG2}/08.clean/{{batch}}.classified.gz',
         filtered = f'{TRANSIENT}/{LANG1}_{LANG2}/08.clean/{{batch}}.filtered{FILTERED}.gz'
     params:
@@ -705,7 +705,7 @@ if not CLEAN:
     extension = ".gz"
 else:
     raw_input_filename = "08.clean"
-    extension = f'.filtered{FILTERED}.gz'
+    extension = f'.classified.gz'
 
 rule raw:
     input: lambda wildcards: [f'{TRANSIENT}/{LANG1}_{LANG2}/{raw_input_filename}/{batch}{extension}' for batch in get_postproc_batches()]
