@@ -247,7 +247,10 @@ if 'parallelWorkers' in config:
 OUTPUT = []
 UNTIL = config['until'] if 'until' in config else ''
 if 'until' not in config:
-    OUTPUT = expand('{permanent}/{lang1}-{lang2}.{output_file}.gz', permanent=PERMANENT, target=TARGETS, lang1=LANG1, lang2=LANG2, output_file=OUTPUT_FILES)
+    if CLEAN:
+        OUTPUT = expand('{permanent}/{lang1}-{lang2}.{output_file}.gz', permanent=PERMANENT, target=TARGETS, lang1=LANG1, lang2=LANG2, output_file=OUTPUT_FILES)
+    else:
+        OUTPUT = f'{PERMANENT}/{LANG1}-{LANG2}.unclean_corpus.gz'
     # this has to be added, because tokenisation rules are the last rules that don't need both shards
     # otherwise snakemake waites for both shards be completed to continue
     OUTPUT.append(f'{DATADIR}/shards/05.tokenise.{TRG_LANG}')
@@ -635,7 +638,7 @@ rule unclean_corpus:
         align=lambda wildcards: [f'{DATADIR}/shards/{SRC_LANG}/{shard}/{src_batch}/aligned-{TRG_LANG}{trg_batch}.gz' for (shard, (src_batch, trg_batch)) in get_align_inputs(SRC_LANG, TRG_LANG)],
         src_batches=f'{DATADIR}/shards/02.batches.{SRC_LANG}',
         trg_batches=f'{DATADIR}/shards/02.batches.{TRG_LANG}'
-    output: f'{TRANSIENT}/{LANG1}_{LANG2}/{LANG1}_{LANG2}.unclean_corpus.gz'
+    output: f'{PERMANENT}/{LANG1}-{LANG2}.unclean_corpus.gz'
     shell: '''
         cat {input.src_batches} \
             | while read batch; do
@@ -658,7 +661,7 @@ rule unclean_corpus:
 
 # split segalign results into balanced chunks
 checkpoint split_segalign:
-    input: f'{TRANSIENT}/{LANG1}_{LANG2}/{LANG1}_{LANG2}.unclean_corpus.gz'
+    input: rules.unclean_corpus.output
     output: batches=f'{TRANSIENT}/{LANG1}_{LANG2}/{LANG1}_{LANG2}.postprocessing_batches'
     params:
         size=BATCHES, # use same parameter as for shards
