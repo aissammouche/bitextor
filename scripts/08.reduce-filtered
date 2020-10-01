@@ -1,0 +1,18 @@
+#!/bin/bash
+
+set -e -o pipefail
+shopt -s extglob
+
+INPUT=$1 # $DATA/$L.$RELEASE.
+OUTPUT=$2 # $DATA/$L
+THREADS=${3:-32}
+
+SECONDS=0
+# Reduce filtered
+pigz -dc ${INPUT}+([0-9]).filtered${THRESHOLD/./}.gz \
+    | LC_ALL=C sort -t$'\t' -k5,5 -k6,6nr --compress-program=gzip -T $TMP --parallel=$THREADS -S 80%  --merge \
+    | pigz \
+    > ${OUTPUT}.filtered${THRESHOLD/./}.gz
+
+duration=$SECONDS
+echo "$(($duration / 60)) minutes and $(($duration % 60)) seconds elapsed."

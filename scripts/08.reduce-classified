@@ -1,0 +1,23 @@
+#!/bin/bash
+
+set -eou pipefail
+shopt -s extglob
+
+INPUT=$1 # $DATA/$L.*.
+OUTPUT=$2 # $DATA/$L
+
+SECONDS=0
+# Merge files
+cat ${INPUT}+([0-9]).classified.gz \
+    > ${OUTPUT}.classified.gz
+
+# Dump stats
+echo "Language id: $L" > ${OUTPUT}.stats.raw
+echo "raw" >> ${OUTPUT}.stats.raw
+echo "File Size: $(du -h ${OUTPUT}.classified.gz | cut -f 1)" >> ${OUTPUT}.stats.raw
+WC=$(zcat ${OUTPUT}.classified.gz | cut -f 3 | wc -wl | tr -s ' ')
+echo "Sentence Pairs: $(echo $WC | cut -d ' ' -f 1)" >> ${OUTPUT}.stats.raw
+echo "$(echo $L | cut -d - -f 1) words: $(echo $WC | cut -d ' ' -f 2)" >> ${OUTPUT}.stats.raw
+
+duration=$SECONDS
+echo "$(($duration / 60)) minutes and $(($duration % 60)) seconds elapsed."

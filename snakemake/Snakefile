@@ -166,14 +166,13 @@ BIFIXER_FIELDS = []
 AGGRESSIVE_DEDUP = "--aggressive_dedup"
 BICLEANER_MODEL = ""
 BICLEANER_FIELDS = []
-BICLEANER_THRESHOLD = 0.0
-FILTERED = "00"
+BICLEANER_THRESHOLD = 0.5
+FILTERED = "05"
 ELRC_FIELDS = []
 
 TMX = False
 DEDUPED = False
-# TODO: add rawCorpus option to generate lang1-lang2.raw.gz
-OUTPUT_FILES = ["sent", "raw"]
+OUTPUT_FILES = ["unclean_corpus"]
 if 'deferred' in config and config['deferred']:
     DEFERRED = True
     DEFERRED_FIELDS = ['deferredseg1','checksum1','deferredseg2','checksum2']
@@ -189,6 +188,7 @@ if 'cleaning' in config and config['cleaning']:
         FILTERED = str(BICLEANER_THRESHOLD).replace(".", "")
     if 'aggressiveDedup' in config and not config['aggressiveDedup']:
         AGGRESSIVE_DEDUP = ''
+    OUTPUT_FILES.extend(["classified", f"filtered{FILTERED}"])
 if 'tmx' in config and config['tmx']:
     TMX = True
     OUTPUT_FILES.append('not-deduped.tmx')
@@ -247,14 +247,12 @@ if 'parallelWorkers' in config:
 OUTPUT = []
 UNTIL = config['until'] if 'until' in config else ''
 if 'until' not in config:
-    if CLEAN:
-        OUTPUT = expand('{permanent}/{lang1}-{lang2}.{output_file}.gz', permanent=PERMANENT, target=TARGETS, lang1=LANG1, lang2=LANG2, output_file=OUTPUT_FILES)
-    else:
-        OUTPUT = f'{PERMANENT}/{LANG1}-{LANG2}.unclean_corpus.gz'
+    OUTPUT = expand('{permanent}/{lang1}-{lang2}.{output_file}.gz', permanent=PERMANENT, target=TARGETS, lang1=LANG1, lang2=LANG2, output_file=OUTPUT_FILES)
     # this has to be added, because tokenisation rules are the last rules that don't need both shards
     # otherwise snakemake waites for both shards be completed to continue
     OUTPUT.append(f'{DATADIR}/shards/05.tokenise.{TRG_LANG}')
     OUTPUT.append(f'{DATADIR}/shards/05.tokenise.{SRC_LANG}2{TRG_LANG}')
+    print(OUTPUT)
 elif UNTIL == 'crawl':
     for domain, hosts in DOMAIN_2_HOSTS.items():
         for host in hosts:
@@ -734,37 +732,35 @@ else:
     input_raw = rules.unclean_corpus.output
     input_sents = rules.unclean_corpus.output
 
-rule raw:
-    input: input_raw
+rule reduce_classified:
+    input: lambda wildcards: [f'{TRANSIENT}/{LANG1}_{LANG2}/clean/{batch}.classified.gz' for batch in get_postproc_batches()]
     output:
-        corpus=f'{PERMANENT}/{LANG1}-{LANG2}.raw.gz',
+        corpus=f'{PERMANENT}/{LANG1}-{LANG2}.classified.gz',
         stats=f'{PERMANENT}/{LANG1}-{LANG2}.stats.raw'
+    params:
+        input_prefix=f'{TRANSIENT}/{LANG1}_{LANG2}/clean/',
+        output_prefix=f'{PERMANENT}/{LANG1}-{LANG2}'
     shell: '''
-        if [[ {input[0]} == *.gz ]]; then
-            cat {input} > {output.corpus}
-        else
-            cat {input} | pigz -c > {output.corpus}
-        fi
-        echo "{LANG1}-{LANG2} raw" > {output.stats}
-        echo "File size: $(du -h {output.corpus} | cut -f 1)" >> {output.stats}
-        WC1=$(zcat {output.corpus} | cut -f 3 | wc -wl | tr -s ' ')
-        WC2=$(zcat {output.corpus} | cut -f 4 | wc -w)
-        echo "Sentence pairs: $(echo $WC1 | cut -d ' ' -f 1)" >> {output.stats}
-        echo "{LANG1} words: $(echo $WC1 | cut -d ' ' -f 2)" >> {output.stats}
-        echo "{LANG2} words: $WC2" >> {output.stats}
+        export L={LANG1}-{LANG2}
+        bash {BITEXTOR}/scripts/08.reduce-classified {params.input_prefix} {params.output_prefix}
         '''
 
-rule sents:
-    input: input_sents
-    output: f'{PERMANENT}/{LANG1}-{LANG2}.sent.gz'
+rule reduce_filtered:
+    input: lambda wildcards: [f'{TRANSIENT}/{LANG1}_{LANG2}/clean/{batch}.filtered{FILTERED}.gz' for batch in get_postproc_batches()]
+    params:
+        input_prefix = f'{TRANSIENT}/{LANG1}_{LANG2}/clean/',
+        output_prefix = f'{PERMANENT}/{LANG1}-{LANG2}'
+    output: f'{PERMANENT}/{LANG1}-{LANG2}.filtered{FILTERED}.gz'
     threads: THREADS['sents']
     shell: '''
-        LC_ALL=C sort -t $'\t' {FILTER_SORT_FIELDS} --parallel {threads} --compress-program=gzip -T {TMPDIR} --merge <(zcat -f {input}) \
-            | pigz -c > {output}
+        export THRESHOLD={BICLEANER_THRESHOLD}
+        export TMP=$(mktemp -d {TMPDIR}/reduce-filtered.XXXXXX)
+        bash {BITEXTOR}/scripts/08.reduce-filtered {params.input_prefix} {params.output_prefix} {threads}
+        rm -rf $TMP
         '''
 
 rule tmx:
-    input: rules.sents.output
+    input: rules.reduce_filtered.output
     output: f'{PERMANENT}/{LANG1}-{LANG2}.not-deduped.tmx.gz'
     shell: '''
         zcat {input} \
@@ -773,7 +769,7 @@ rule tmx:
         '''
 
 rule deduped_tmx:
-    input: rules.sents.output
+    input: rules.reduce_filtered.output
     output:
         tmx=f'{PERMANENT}/{LANG1}-{LANG2}.deduped.tmx.gz',
         txt=f'{PERMANENT}/{LANG1}-{LANG2}.deduped.txt.gz',
