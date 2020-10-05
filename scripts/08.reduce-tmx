@@ -1,0 +1,26 @@
+#!/bin/bash
+
+set -e -o pipefail
+
+INPUT=$1 # $DATA/$L.filtered${THRESHOLD/./}
+OUTPUT=$2 # $DATA/$L
+
+IFS='-' read L1 L2 <<< $L
+
+SECONDS=0
+# Create deduped TMX and TXT
+zcat $INPUT \
+    | python $BITEXTOR/bitextor-buildTMX.py --lang1 $L1 --lang2 $L2 -c "url1,url2,seg1,seg2,bifixerhash,bifixerscore,bicleaner,lengthratio,numTokensSL,numTokensTL" --dedup "bifixerhash" -f $OUTPUT.txt.gz \
+    | pigz -c \
+    > $OUTPUT.tmx.gz
+
+# Dump stats
+echo "tmx" > $OUTPUT.stats.tmx
+echo "TXT File Size: $(du -h $OUTPUT.txt.gz | cut -f 1)" >> $OUTPUT.stats.tmx
+echo "TMX File Size: $(du -h $OUTPUT.tmx.gz | cut -f 1)" >> $OUTPUT.stats.tmx
+WC=$(zcat $OUTPUT.txt.gz | cut -f 1 | wc -wl | tr -s ' ')
+echo "Sentence Pairs: $(echo $WC | cut -d ' ' -f 1)" >> $OUTPUT.stats.tmx
+echo "$L1 words: $(echo $WC | cut -d ' ' -f 2)" >> $OUTPUT.stats.tmx
+
+duration=$SECONDS
+echo "$(($duration / 60)) minutes and $(($duration % 60)) seconds elapsed."

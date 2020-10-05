@@ -136,8 +136,7 @@ def validate_args(config):
             'aggressiveDedup': {'type': 'boolean', 'dependencies': {'cleaning': True}}, # mark near duplicates as duplicates
             'bicleaner': {'type': 'string', 'dependencies': {'cleaning': True}, 'check_with': isfile}, # TODO: check that model exists, use training subworkflow if not
             'bicleanerThreshold': {'type': 'float', 'dependencies': {'cleaning': True}},
-            'tmx': {'type': 'boolean', 'dependencies': {'cleaning': True}},
-            'deduped': {'type': 'boolean', 'dependencies': {'cleaning': True}}
+            'tmx': {'type': 'boolean', 'dependencies': {'cleaning': True}}, # create deduped tmx and txt
             }
 
     if 'crawler' in config and config['crawler'] == 'heritrix':

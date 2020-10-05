@@ -172,7 +172,7 @@ ELRC_FIELDS = []
 
 TMX = False
 DEDUPED = False
-OUTPUT_FILES = ["unclean_corpus"]
+OUTPUT_FILES = ['unclean_corpus.gz']
 if 'deferred' in config and config['deferred']:
     DEFERRED = True
     DEFERRED_FIELDS = ['deferredseg1','checksum1','deferredseg2','checksum2']
@@ -188,13 +188,10 @@ if 'cleaning' in config and config['cleaning']:
         FILTERED = str(BICLEANER_THRESHOLD).replace(".", "")
     if 'aggressiveDedup' in config and not config['aggressiveDedup']:
         AGGRESSIVE_DEDUP = ''
-    OUTPUT_FILES.extend(["classified", f"filtered{FILTERED}"])
+    OUTPUT_FILES.extend(['classified.gz', f'filtered{FILTERED}.gz', 'stats.raw'])
 if 'tmx' in config and config['tmx']:
     TMX = True
-    OUTPUT_FILES.append('not-deduped.tmx')
-if 'deduped' in config and config['deduped']:
-    OUTPUT_FILES.append('deduped.tmx')
-    OUTPUT_FILES.append('deduped.txt')
+    OUTPUT_FILES.extend(['tmx.gz', 'txt.gz', 'stats.tmx'])
 
 BEFORE_ELRC_FIELDS = FIELDS + DEFERRED_FIELDS + BIFIXER_FIELDS + BICLEANER_FIELDS
 TMX_FIELDS = BEFORE_ELRC_FIELDS + ELRC_FIELDS
@@ -247,12 +244,11 @@ if 'parallelWorkers' in config:
 OUTPUT = []
 UNTIL = config['until'] if 'until' in config else ''
 if 'until' not in config:
-    OUTPUT = expand('{permanent}/{lang1}-{lang2}.{output_file}.gz', permanent=PERMANENT, target=TARGETS, lang1=LANG1, lang2=LANG2, output_file=OUTPUT_FILES)
+    OUTPUT = expand('{permanent}/{lang1}-{lang2}.{output_file}', permanent=PERMANENT, target=TARGETS, lang1=LANG1, lang2=LANG2, output_file=OUTPUT_FILES)
     # this has to be added, because tokenisation rules are the last rules that don't need both shards
     # otherwise snakemake waites for both shards be completed to continue
     OUTPUT.append(f'{DATADIR}/shards/05.tokenise.{TRG_LANG}')
     OUTPUT.append(f'{DATADIR}/shards/05.tokenise.{SRC_LANG}2{TRG_LANG}')
-    print(OUTPUT)
 elif UNTIL == 'crawl':
     for domain, hosts in DOMAIN_2_HOSTS.items():
         for host in hosts:
@@ -761,28 +757,13 @@ rule reduce_filtered:
 
 rule tmx:
     input: rules.reduce_filtered.output
-    output: f'{PERMANENT}/{LANG1}-{LANG2}.not-deduped.tmx.gz'
-    shell: '''
-        zcat {input} \
-            | {PROFILING} python3 {BITEXTOR}/bitextor-buildTMX.py --lang1 {LANG1} --lang2 {LANG2} -c "{TMX_FIELDS}" \
-            | pigz -c > {output}
-        '''
-
-rule deduped_tmx:
-    input: rules.reduce_filtered.output
     output:
-        tmx=f'{PERMANENT}/{LANG1}-{LANG2}.deduped.tmx.gz',
-        txt=f'{PERMANENT}/{LANG1}-{LANG2}.deduped.txt.gz',
-        stats=f'{PERMANENT}/{LANG1}-{LANG2}.stats.deduped'
+        tmx=f'{PERMANENT}/{LANG1}-{LANG2}.tmx.gz',
+        txt=f'{PERMANENT}/{LANG1}-{LANG2}.txt.gz',
+        stats=f'{PERMANENT}/{LANG1}-{LANG2}.stats.tmx'
+    params: output_prefix = f'{PERMANENT}/{LANG1}-{LANG2}'
     shell: '''
-        zcat {input} \
-            | {PROFILING} {BITEXTOR}/bitextor-buildTMX.py --lang1 {LANG1} --lang2 {LANG2} -c "{TMX_FIELDS}" --dedup "{TMX_DEDUP_FIELDS}" -f {output.txt} \
-            | pigz -c > {output.tmx}
-        echo "{LANG1}-{LANG2} deduped txt" > {output.stats}
-        echo "File size: $(du -h {output.txt} | cut -f 1)" >> {output.stats}
-        WC1=$(zcat {output.txt} | cut -f 3 | wc -wl | tr -s ' ')
-        WC2=$(zcat {output.txt} | cut -f 4 | wc -w)
-        echo "Sentence pairs: $(echo $WC1 | cut -d ' ' -f 1)" >> {output.stats}
-        echo "{LANG1} words: $(echo $WC1 | cut -d ' ' -f 2)" >> {output.stats}
-        echo "{LANG2} words: $WC2" >> {output.stats}
+        export BITEXTOR={BITEXTOR}
+        export L="{LANG1}-{LANG2}"
+        bash {BITEXTOR}/scripts/08.reduce-tmx {input} {params.output_prefix}
         '''
